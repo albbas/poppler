@@ -56,6 +56,8 @@
 #include <ctype.h>
 #include <math.h>
 #include <iostream>
+#include <list>
+#include <string>
 #include "goo/GooString.h"
 #include "goo/GooList.h"
 #include "UnicodeMap.h"
@@ -466,34 +468,41 @@ void HtmlPage::endString() {
   curStr = NULL;
 }
 
-static const char *strrstr( const char *s, const char *ss )
+static bool tag_exists( std::list<std::string> tags, std::string tag )
 {
-  const char *p = strstr( s, ss );
-  for( const char *pp = p; pp != NULL; pp = strstr( p+1, ss ) ){
-    p = pp;
-  }
-  return p;
+    for( std::list<std::string>::iterator t = tags.begin(); t != tags.end(); ++t ) {
+        if( *t == tag ) {
+            return true;
+        }
+    }
+    return false;
 }
 
-static void CloseTags( GooString *htext, GBool &finish_a, GBool &finish_italic, GBool &finish_bold )
+static void CloseTag(GooString *htext, std::list<std::string> &tags, std::string tag)
 {
-  const char *last_italic = finish_italic && ( finish_bold   || finish_a    ) ? strrstr( htext->getCString(), "<i>" ) : NULL;
-  const char *last_bold   = finish_bold   && ( finish_italic || finish_a    ) ? strrstr( htext->getCString(), "<b>" ) : NULL;
-  const char *last_a      = finish_a      && ( finish_italic || finish_bold ) ? strrstr( htext->getCString(), "<a " ) : NULL;
-  if( finish_a && ( finish_italic || finish_bold ) && last_a > ( last_italic > last_bold ? last_italic : last_bold ) ){
-    htext->append("</a>", 4);
-    finish_a = false;
+    while( !tags.empty() && tags.back() != tag ) {
+        std::string current_tag = tags.back();
+        htext->append(current_tag.c_str(), current_tag.length());
+        tags.pop_back();
+    }
+    if( !tags.empty()) {
+      std::string current_tag = tags.back();
+      htext->append(current_tag.c_str(), current_tag.length());
+      tags.pop_back();
+    }
+}
+
+static void CloseTags( GooString *htext, GBool &finish_a, GBool &finish_italic, GBool &finish_bold, std::list<std::string> &tags )
+{
+  if( finish_a ) {
+    CloseTag(htext, tags, "</a>");
   }
-  if( finish_italic && finish_bold && last_italic > last_bold ){
-    htext->append("</i>", 4);
-    finish_italic = false;
+  if( finish_italic ) {
+    CloseTag(htext, tags, "</i>");
   }
-  if( finish_bold )
-    htext->append("</b>", 4);
-  if( finish_italic )
-    htext->append("</i>", 4);
-  if( finish_a )
-    htext->append("</a>");
+  if( finish_bold ) {
+    CloseTag(htext, tags, "</b>");
+  }
 }
 
 // Strings are lines of text;
@@ -520,6 +529,8 @@ void HtmlPage::coalesce() {
   printf("\n------------------------------------------------------------\n\n");
 #endif
   str1 = yxStrings;
+  std::list<std::string> tags;
+  int index = 0;
 
   if( !str1 ) return;
 
@@ -564,13 +575,20 @@ void HtmlPage::coalesce() {
   str1 = yxStrings;
   
   hfont1 = getFont(str1);
-  if( hfont1->isBold() )
-    str1->htext->insert(0,"<b>",3);
-  if( hfont1->isItalic() )
-    str1->htext->insert(0,"<i>",3);
+  if( hfont1->isItalic() ) {
+    tags.push_back("</i>");
+    str1->htext->insert(index, "<i>", 3);
+    index += 3;
+  }
+  if( hfont1->isBold() ) {
+    tags.push_back("</b>");
+    str1->htext->insert(index, "<b>", 3);
+    index += 3;
+  }
   if( str1->getLink() != NULL ) {
+    tags.push_back("</a>");
     GooString *ls = str1->getLink()->getLinkStart();
-    str1->htext->insert(0, ls);
+    str1->htext->insert(index, ls);
     delete ls;
   }
   curX = str1->xMin; curY = str1->yMin;
@@ -675,19 +693,23 @@ void HtmlPage::coalesce() {
       HtmlLink *hlink2 = str2->getLink();
       bool switch_links = !hlink1 || !hlink2 || !hlink1->isEqualDest(*hlink2);
       GBool finish_a = switch_links && hlink1 != NULL;
-      GBool finish_italic = hfont1->isItalic() && ( !hfont2->isItalic() || finish_a );
-      GBool finish_bold   = hfont1->isBold()   && ( !hfont2->isBold()   || finish_a || finish_italic );
-      CloseTags( str1->htext, finish_a, finish_italic, finish_bold );
+      GBool finish_italic = hfont1->isItalic() && !hfont2->isItalic();
+      GBool finish_bold   = hfont1->isBold()   && !hfont2->isBold();
+      CloseTags( str1->htext, finish_a, finish_italic, finish_bold, tags );
       if( switch_links && hlink2 != NULL ) {
+        tags.push_back("</a>");
         GooString *ls = hlink2->getLinkStart();
         str1->htext->append(ls);
         delete ls;
       }
-      if( ( !hfont1->isItalic() || finish_italic ) && hfont2->isItalic() )
-	    str1->htext->append("<i>", 3);
-      if( ( !hfont1->isBold() || finish_bold ) && hfont2->isBold() )
-	    str1->htext->append("<b>", 3);
-
+      if( hfont2->isItalic() && !tag_exists(tags, "</i>") ) {
+        tags.push_back("</i>");
+        str1->htext->append("<i>", 3);
+      }
+      if( !hfont1->isBold() && hfont2->isBold() ) {
+        tags.push_back("</b>");
+        str1->htext->append("<b>", 3);
+      }
 
       str1->htext->append(str2->htext);
       // str1 now contains href for link of str2 (if it is defined)
@@ -706,20 +728,28 @@ void HtmlPage::coalesce() {
       GBool finish_a = str1->getLink() != NULL;
       GBool finish_bold   = hfont1->isBold();
       GBool finish_italic = hfont1->isItalic();
-      CloseTags( str1->htext, finish_a, finish_italic, finish_bold );
+      CloseTags( str1->htext, finish_a, finish_italic, finish_bold, tags );
      
       str1->xMin = curX; str1->yMin = curY; 
       str1 = str2;
       curX = str1->xMin; curY = str1->yMin;
       hfont1 = hfont2;
-      if( hfont1->isBold() )
-	str1->htext->insert(0,"<b>",3);
-      if( hfont1->isItalic() )
-	str1->htext->insert(0,"<i>",3);
+      index = 0;
+      if( hfont1->isItalic() ) {
+        tags.push_back("</i>");
+        str1->htext->insert(index, "<i>", 3);
+        index += 3;
+      }
+      if( hfont1->isBold() ) {
+        tags.push_back("</b>");
+        str1->htext->insert(index, "<b>", 3);
+        index += 3;
+      }
       if( str1->getLink() != NULL ) {
-	GooString *ls = str1->getLink()->getLinkStart();
-	str1->htext->insert(0, ls);
-	delete ls;
+        tags.push_back("</a>");
+        GooString *ls = str1->getLink()->getLinkStart();
+        str1->htext->insert(index, ls);
+        delete ls;
       }
     }
   }
@@ -728,7 +758,7 @@ void HtmlPage::coalesce() {
   GBool finish_bold   = hfont1->isBold();
   GBool finish_italic = hfont1->isItalic();
   GBool finish_a = str1->getLink() != NULL;
-  CloseTags( str1->htext, finish_a, finish_italic, finish_bold );
+  CloseTags( str1->htext, finish_a, finish_italic, finish_bold, tags );
 
 #if 0 //~ for debugging
   for (str1 = yxStrings; str1; str1 = str1->yxNext) {
