@@ -575,6 +575,13 @@ void HtmlPage::coalesce() {
   str1 = yxStrings;
   
   hfont1 = getFont(str1);
+  if( str1->getLink() != NULL ) {
+    tags.push_back("</a>");
+    GooString *ls = str1->getLink()->getLinkStart();
+    str1->htext->insert(index, ls);
+    index += ls->getLength();
+    delete ls;
+  }
   if( hfont1->isItalic() ) {
     tags.push_back("</i>");
     str1->htext->insert(index, "<i>", 3);
@@ -584,12 +591,6 @@ void HtmlPage::coalesce() {
     tags.push_back("</b>");
     str1->htext->insert(index, "<b>", 3);
     index += 3;
-  }
-  if( str1->getLink() != NULL ) {
-    tags.push_back("</a>");
-    GooString *ls = str1->getLink()->getLinkStart();
-    str1->htext->insert(index, ls);
-    delete ls;
   }
   curX = str1->xMin; curY = str1->yMin;
 
@@ -735,6 +736,13 @@ void HtmlPage::coalesce() {
       curX = str1->xMin; curY = str1->yMin;
       hfont1 = hfont2;
       index = 0;
+      if( str1->getLink() != NULL ) {
+        tags.push_back("</a>");
+        GooString *ls = str1->getLink()->getLinkStart();
+        str1->htext->insert(index, ls);
+        index += ls->getLength();
+        delete ls;
+      }
       if( hfont1->isItalic() ) {
         tags.push_back("</i>");
         str1->htext->insert(index, "<i>", 3);
@@ -744,12 +752,6 @@ void HtmlPage::coalesce() {
         tags.push_back("</b>");
         str1->htext->insert(index, "<b>", 3);
         index += 3;
-      }
-      if( str1->getLink() != NULL ) {
-        tags.push_back("</a>");
-        GooString *ls = str1->getLink()->getLinkStart();
-        str1->htext->insert(index, ls);
-        delete ls;
       }
     }
   }
