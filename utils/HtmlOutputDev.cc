@@ -480,14 +480,16 @@ static bool tag_exists( std::list<std::string> tags, std::string tag )
 
 static void CloseTag(GooString *htext, std::list<std::string> &tags, std::string tag)
 {
+    size_t index = strlen(htext->getCString());
     while( !tags.empty() && tags.back() != tag ) {
         std::string current_tag = tags.back();
-        htext->append(current_tag.c_str(), current_tag.length());
+        htext->insert(index, current_tag.c_str());
+        index += current_tag.length();
         tags.pop_back();
     }
     if( !tags.empty()) {
       std::string current_tag = tags.back();
-      htext->append(current_tag.c_str(), current_tag.length());
+      htext->insert(index, current_tag.c_str());
       tags.pop_back();
     }
 }
